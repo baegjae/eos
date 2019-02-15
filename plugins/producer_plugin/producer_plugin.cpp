@@ -1592,6 +1592,8 @@ void producer_plugin_impl::produce_block() {
         ("n",new_bs->block_num)("t",new_bs->header.timestamp)
         ("count",new_bs->block->transactions.size())("lib",chain.last_irreversible_block_num())("confs", new_bs->header.confirmed));
 
+   chain._count_blocks++;
+   chain._count_txns += new_bs->block->transactions.size();
 }
 
 } // namespace eosio

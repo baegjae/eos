@@ -92,6 +92,7 @@ struct txn_test_gen_plugin_impl {
 
    uint64_t _total_us = 0;
    uint64_t _txcount = 0;
+   time_point _start_time;
 
    std::shared_ptr<boost::asio::io_context>             gen_ioc;
    optional<io_work_t>                                  gen_ioc_work;
@@ -282,6 +283,8 @@ struct txn_test_gen_plugin_impl {
       timer_timeout = period;
       batch = batch_size/2;
       nonce_prefix = 0;
+      cc._count_blocks = 0;
+      cc._count_txns = 0;
 
       gen_ioc = std::make_shared<boost::asio::io_context>();
       gen_ioc_work.emplace( boost::asio::make_work_guard(*gen_ioc) );
@@ -292,6 +295,8 @@ struct txn_test_gen_plugin_impl {
 
       ilog("Started transaction test plugin; generating ${p} transactions every ${m} ms by ${t} load generation threads",
          ("p", batch_size) ("m", period) ("t", thread_pool_size));
+
+      _start_time = fc::time_point::now();
 
       boost::asio::post( *gen_ioc, [this]() {
          arm_timer(boost::asio::high_resolution_timer::clock_type::now());
@@ -384,10 +389,17 @@ struct txn_test_gen_plugin_impl {
          thread_pool->join();
          thread_pool->stop();
       }
+      auto elapsed_ms = (fc::time_point::now() - _start_time).count()/1000;
+      controller& cc = app().get_plugin<chain_plugin>().chain();
+
       ilog("Stopping transaction generation test");
 
       if (_txcount) {
-         ilog("${d} transactions executed, ${t}us / transaction", ("d", _txcount)("t", _total_us / (double)_txcount));
+         ilog("${d} transactions executed for ${s} ms (${tps} TPS), ${t}us / transaction", 
+            ("d", _txcount) ("s", elapsed_ms) ("tps",(int)(((double)_txcount/elapsed_ms)*1000)) ("t", _total_us / (double)_txcount));
+         ilog("${t} transactions produced in ${b} blocks (${tps} TPS)",
+            ("t",cc._count_txns) ("b",cc._count_blocks) ("tps",cc._count_txns*2 / cc._count_blocks) );
+
          _txcount = _total_us = 0;
       }
    }

@@ -278,6 +278,9 @@ namespace eosio { namespace chain {
             return pretty_output;
          }
 
+         uint64_t _count_blocks;
+         uint64_t _count_txns;
+
       private:
          friend class apply_context;
          friend class transaction_context;
