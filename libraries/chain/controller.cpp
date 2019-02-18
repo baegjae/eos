@@ -1041,6 +1041,7 @@ struct controller_impl {
                        false
                );
             }
+            self.t_sig_transaction += trx->sig_cpu_usage;
             trx_context.exec();
             trx_context.finalize(); // Automatically rounds up network and CPU usage in trace and bills payers if successful
 

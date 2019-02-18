@@ -356,7 +356,10 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
             if( trx->signing_keys_future.valid() )
                trx->signing_keys_future.wait();
             app().post(priority::low, [self, trx, persist_until_expired, next]() {
+               auto start = fc::time_point::now(); // profiling
                self->process_incoming_transaction_async( trx, persist_until_expired, next );
+               chain::controller& chain = self->chain_plug->chain();
+               chain.t_process_transaction += fc::time_point::now() - start;
             });
          });
       }
@@ -1332,7 +1335,9 @@ producer_plugin_impl::start_block_result producer_plugin_impl::start_block() {
                   _pending_incoming_transactions.pop_front();
                   --orig_pending_txn_size;
                   _incoming_trx_weight -= 1.0;
+                  auto start = fc::time_point::now(); // profiling
                   process_incoming_transaction_async(std::get<0>(e), std::get<1>(e), std::get<2>(e));
+                  chain.t_process_transaction += fc::time_point::now() - start;
                }
 
                if (scheduled_trx_deadline <= fc::time_point::now()) {
@@ -1398,7 +1403,9 @@ producer_plugin_impl::start_block_result producer_plugin_impl::start_block() {
                   auto e = _pending_incoming_transactions.front();
                   _pending_incoming_transactions.pop_front();
                   --orig_pending_txn_size;
+                  auto start = fc::time_point::now(); // profiling
                   process_incoming_transaction_async(std::get<0>(e), std::get<1>(e), std::get<2>(e));
+                  chain.t_process_transaction += fc::time_point::now() - start;
                }
             }
             return start_block_result::succeeded;

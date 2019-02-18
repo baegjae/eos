@@ -285,6 +285,8 @@ struct txn_test_gen_plugin_impl {
       nonce_prefix = 0;
       cc._count_blocks = 0;
       cc._count_txns = 0;
+      cc.t_process_transaction = fc::microseconds(0);
+      cc.t_sig_transaction = fc::microseconds(0);
 
       gen_ioc = std::make_shared<boost::asio::io_context>();
       gen_ioc_work.emplace( boost::asio::make_work_guard(*gen_ioc) );
@@ -390,15 +392,19 @@ struct txn_test_gen_plugin_impl {
          thread_pool->stop();
       }
       auto elapsed_ms = (fc::time_point::now() - _start_time).count()/1000;
+      double blocks = (double)elapsed_ms / 500; // 0.5 sec per block
       controller& cc = app().get_plugin<chain_plugin>().chain();
 
       ilog("Stopping transaction generation test");
 
       if (_txcount) {
-         ilog("${d} transactions executed for ${s} ms (${tps} TPS), ${t}us / transaction", 
-            ("d", _txcount) ("s", elapsed_ms) ("tps",(int)(((double)_txcount/elapsed_ms)*1000)) ("t", _total_us / (double)_txcount));
+         ilog("${d} transactions executed for ${s} ms (${tps} TPS)", 
+            ("d", _txcount) ("s", elapsed_ms) ("tps",(int)(((double)_txcount/elapsed_ms)*1000)));
          ilog("${t} transactions produced in ${b} blocks (${tps} TPS)",
             ("t",cc._count_txns) ("b",cc._count_blocks) ("tps",cc._count_txns*2 / cc._count_blocks) );
+         ilog("process_transaction ${p} ms/block, sig_transaction ${s} ms/block, billed CPU usage ${t} us/transaction ",
+            ("p", (int)((double)cc.t_process_transaction.count()/1000/blocks) ) ("s", (int)((double)cc.t_sig_transaction.count()/1000/blocks) )
+            ("t", _total_us / (double)_txcount) );
 
          _txcount = _total_us = 0;
       }

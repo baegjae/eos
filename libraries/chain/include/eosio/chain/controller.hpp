@@ -280,6 +280,8 @@ namespace eosio { namespace chain {
 
          uint64_t _count_blocks;
          uint64_t _count_txns;
+         fc::microseconds t_process_transaction;
+         fc::microseconds t_sig_transaction;
 
       private:
          friend class apply_context;
