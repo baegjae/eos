@@ -344,6 +344,9 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
                  ("n",block_header::num_from_id(block->id()))("t",block->timestamp)
                  ("count",block->transactions.size())("lib",chain.last_irreversible_block_num())("confs", block->confirmed)("latency", (fc::time_point::now() - block->timestamp).count()/1000 ) );
          }
+
+         chain._count_blocks++;
+         chain._count_txns += block->transactions.size();
       }
 
       std::deque<std::tuple<transaction_metadata_ptr, bool, next_function<transaction_trace_ptr>>> _pending_incoming_transactions;
