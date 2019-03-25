@@ -997,9 +997,6 @@ struct controller_impl {
       transaction_trace_ptr trace;
       try {
          auto start = fc::time_point::now();
-         const bool check_auth = !self.skip_auth_check() && !trx->implicit;
-         // call recover keys so that trx->sig_cpu_usage is set correctly
-         const flat_set<public_key_type>& recovered_keys = check_auth ? trx->recover_keys( chain_id ) : flat_set<public_key_type>();
          if( !explicit_billed_cpu_time ) {
             fc::microseconds already_consumed_time( EOS_PERCENT(trx->sig_cpu_usage.count(), conf.sig_cpu_bill_pct) );
 
@@ -1032,10 +1029,10 @@ struct controller_impl {
 
             trx_context.delay = fc::seconds(trn.delay_sec);
 
-            if( check_auth ) {
+            if( !self.skip_auth_check() && !trx->implicit ) {
                authorization.check_authorization(
                        trn.actions,
-                       recovered_keys,
+                       trx->recover_keys( chain_id ),
                        {},
                        trx_context.delay,
                        [&trx_context](){ trx_context.checktime(); },
