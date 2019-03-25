@@ -360,7 +360,7 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
          boost::asio::post( *_thread_pool, [self = this, trx, persist_until_expired, next]() {
             if( trx->signing_keys_future.valid() )
                trx->signing_keys_future.wait();
-            app().post(priority::low, [self, trx, persist_until_expired, next]() {
+            boost::asio::post( *self->_prod_thread_pool, [self, trx, persist_until_expired, next]() {
                auto start = fc::time_point::now(); // profiling
                self->process_incoming_transaction_async( trx, persist_until_expired, next );
                chain::controller& chain = self->chain_plug->chain();
@@ -482,6 +482,7 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
       };
 
       start_block_result start_block();
+      void process_schedule_production_loop(start_block_result result);
 
       fc::time_point calculate_pending_block_time() const;
       fc::time_point calculate_block_deadline( const fc::time_point& ) const;
@@ -1435,11 +1436,16 @@ producer_plugin_impl::start_block_result producer_plugin_impl::start_block() {
 }
 
 void producer_plugin_impl::schedule_production_loop() {
-   chain::controller& chain = chain_plug->chain();
    _timer.cancel();
-   std::weak_ptr<producer_plugin_impl> weak_this = shared_from_this();
+   boost::asio::post( *_prod_thread_pool, [this]() {
+      auto result = start_block();
+      process_schedule_production_loop(result);
+   });
+}
 
-   auto result = start_block();
+void producer_plugin_impl::process_schedule_production_loop(start_block_result result) {
+   chain::controller& chain = chain_plug->chain();
+   std::weak_ptr<producer_plugin_impl> weak_this = shared_from_this();
 
    if (result == start_block_result::failed) {
       elog("Failed to start a pending block, will try again later");
@@ -1550,7 +1556,9 @@ bool producer_plugin_impl::maybe_produce_block() {
 
    try {
       try {
-         produce_block();
+         boost::asio::post( *_prod_thread_pool, [this](){
+            produce_block();
+         });
          return true;
       } catch ( const guard_exception& e ) {
          chain_plug->handle_guard_exception(e);
