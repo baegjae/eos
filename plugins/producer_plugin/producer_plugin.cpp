@@ -133,6 +133,8 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
       pending_block_mode                                        _pending_block_mode;
       transaction_id_with_expiry_index                          _persistent_transactions;
       fc::optional<boost::asio::thread_pool>                    _thread_pool;
+      uint16_t                                                  _prod_thread_pool_size = 1;
+      fc::optional<boost::asio::thread_pool>                    _prod_thread_pool;
 
       int32_t                                                   _max_transaction_time_ms;
       fc::microseconds                                          _max_irreversible_block_age_us;
@@ -695,6 +697,7 @@ void producer_plugin::plugin_initialize(const boost::program_options::variables_
    EOS_ASSERT( thread_pool_size > 0, plugin_config_exception,
                "producer-threads ${num} must be greater than 0", ("num", thread_pool_size));
    my->_thread_pool.emplace( thread_pool_size );
+   my->_prod_thread_pool.emplace( my->_prod_thread_pool_size );
 
    if( options.count( "snapshots-dir" )) {
       auto sd = options.at( "snapshots-dir" ).as<bfs::path>();
@@ -793,6 +796,10 @@ void producer_plugin::plugin_shutdown() {
    if( my->_thread_pool ) {
       my->_thread_pool->join();
       my->_thread_pool->stop();
+   }
+   if( my->_prod_thread_pool ) {
+      my->_prod_thread_pool->join();
+      my->_prod_thread_pool->stop();
    }
    my->_accepted_block_connection.reset();
    my->_irreversible_block_connection.reset();
