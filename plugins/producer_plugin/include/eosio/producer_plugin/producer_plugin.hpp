@@ -76,6 +76,7 @@ public:
    void add_greylist_accounts(const greylist_params& params);
    void remove_greylist_accounts(const greylist_params& params);
    greylist_params get_greylist() const;
+   boost::asio::thread_pool& get_prod_thread_pool();
 
    whitelist_blacklist get_whitelist_blacklist() const;
    void set_whitelist_blacklist(const whitelist_blacklist& params);

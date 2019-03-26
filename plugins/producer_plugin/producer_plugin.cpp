@@ -312,7 +312,10 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
 
          // exceptions throw out, make sure we restart our loop
          auto ensure = fc::make_scoped_exit([this](){
-            schedule_production_loop();
+            _timer.cancel();
+
+            auto result = start_block();
+            process_schedule_production_loop(result);
          });
 
          // push the new block
@@ -909,6 +912,10 @@ producer_plugin::greylist_params producer_plugin::get_greylist() const {
       result.accounts.push_back(acc);
    }
    return result;
+}
+
+boost::asio::thread_pool& producer_plugin::get_prod_thread_pool() {
+   return *my->_prod_thread_pool;
 }
 
 producer_plugin::whitelist_blacklist producer_plugin::get_whitelist_blacklist() const {
