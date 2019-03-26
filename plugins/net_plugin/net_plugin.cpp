@@ -2149,6 +2149,7 @@ namespace eosio {
 
    bool net_plugin_impl::process_next_message(const connection_ptr& conn, uint32_t message_length) {
       try {
+         /* Disable #6735 (net_plugin more quickly determine known block) - hard to handle
          // if next message is a block we already have, exit early
          auto peek_ds = conn->pending_message_buffer.create_peek_datastream();
          unsigned_int which{};
@@ -2167,6 +2168,7 @@ namespace eosio {
                return true;
             }
          }
+         */
 
          auto ds = conn->pending_message_buffer.create_datastream();
          net_message msg;
