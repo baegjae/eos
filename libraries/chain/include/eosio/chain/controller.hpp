@@ -280,6 +280,8 @@ namespace eosio { namespace chain {
 
          uint64_t _count_blocks;
          uint64_t _count_txns;
+         uint64_t _count_accepted_txns;
+         uint64_t _count_rejected_txns;
          fc::microseconds t_process_transaction;
          fc::microseconds t_sig_transaction;
 

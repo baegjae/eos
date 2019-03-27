@@ -396,6 +396,7 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
                           ("txid", trx->id)
                           ("why",response.get<fc::exception_ptr>()->what()));
                }
+               chain._count_rejected_txns++;
             } else {
                _transaction_ack_channel.publish(priority::low, std::pair<fc::exception_ptr, transaction_metadata_ptr>(nullptr, trx));
                if (_pending_block_mode == pending_block_mode::producing) {
@@ -407,6 +408,7 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
                   fc_dlog(_trx_trace_log, "[TRX_TRACE] Speculative execution is ACCEPTING tx: ${txid}",
                           ("txid", trx->id));
                }
+               chain._count_accepted_txns++;
             }
          };
 
