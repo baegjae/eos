@@ -399,17 +399,15 @@ struct txn_test_gen_plugin_impl {
 
       ilog("Stopping transaction generation test");
 
-      if (_txcount) {
-         ilog("${d} transactions executed for ${s} ms (${tps} TPS)", 
-            ("d", _txcount) ("s", elapsed_ms) ("tps",(int)(((double)_txcount/elapsed_ms)*1000)));
-         ilog("${t} transactions (${at},${rt}) produced in ${b} blocks (${tps} TPS)",
-            ("t",cc._count_txns) ("at",cc._count_accepted_txns) ("rt",cc._count_rejected_txns) ("b",cc._count_blocks) ("tps",cc._count_txns*2 / cc._count_blocks) );
-         ilog("process_transaction ${p} ms/block, sig_transaction ${s} ms/block, billed CPU usage ${t} us/transaction ",
-            ("p", (int)((double)cc.t_process_transaction.count()/1000/blocks) ) ("s", (int)((double)cc.t_sig_transaction.count()/1000/blocks) )
-            ("t", _total_us / (double)_txcount) );
+      ilog("${d} transactions executed for ${s} ms (${tps} TPS)",
+         ("d", _txcount) ("s", elapsed_ms) ("tps",(int)(((double)_txcount/elapsed_ms)*1000)));
+      ilog("${t} transactions (${at},${rt}) produced in ${b} blocks (${tps} TPS)",
+         ("t",cc._count_txns) ("at",cc._count_accepted_txns) ("rt",cc._count_rejected_txns) ("b",cc._count_blocks) ("tps",cc._count_txns*2 / cc._count_blocks) );
+      ilog("process_transaction ${p} ms/block, sig_transaction ${s} ms/block, billed CPU usage ${t} us/transaction ",
+         ("p", (int)((double)cc.t_process_transaction.count()/1000/blocks) ) ("s", (int)((double)cc.t_sig_transaction.count()/1000/blocks) )
+         ("t", _total_us / (double)_txcount) );
 
-         _txcount = _total_us = 0;
-      }
+      _txcount = _total_us = 0;
    }
 
    bool running{false};
