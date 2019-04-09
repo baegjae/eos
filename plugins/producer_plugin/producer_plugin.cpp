@@ -432,7 +432,11 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
          }
 
          try {
-            auto trace = chain.push_transaction(trx, deadline);
+            transaction_trace_ptr trace;
+            if(_pending_block_mode == pending_block_mode::producing)
+               trace = chain.push_transaction(trx, deadline);
+            else
+               trace = std::make_shared<transaction_trace>();
             if (trace->except) {
                if (failure_is_subjective(*trace->except, deadline_is_subjective)) {
                   _pending_incoming_transactions.emplace_back(trx, persist_until_expired, next);
