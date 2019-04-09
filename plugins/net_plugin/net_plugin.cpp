@@ -191,10 +191,8 @@ namespace eosio {
       bool is_valid( const handshake_message &msg);
 
       void handle_message(const connection_ptr& c, const handshake_message& msg);
-      void process_message(const connection_ptr& c, const handshake_message& msg);
       void handle_message(const connection_ptr& c, const chain_size_message& msg);
       void handle_message(const connection_ptr& c, const go_away_message& msg );
-      void process_message(const connection_ptr& c, const go_away_message& msg );
       /** \name Peer Timestamps
        *  Time message handling
        *  @{
@@ -209,20 +207,15 @@ namespace eosio {
        * This is necessary in order to avoid overflow and preserve precision.
        */
       void handle_message(const connection_ptr& c, const time_message& msg);
-      void process_message(const connection_ptr& c, const time_message& msg);
       /** @} */
       void handle_message(const connection_ptr& c, const notice_message& msg);
-      void process_message(const connection_ptr& c, const notice_message& msg);
       void handle_message(const connection_ptr& c, const request_message& msg);
-      void process_message(const connection_ptr& c, const request_message& msg);
       void handle_message(const connection_ptr& c, const sync_request_message& msg);
-      void process_message(const connection_ptr& c, const sync_request_message& msg);
       void handle_message(const connection_ptr& c, const signed_block& msg) = delete; // signed_block_ptr overload used instead
       void handle_message(const connection_ptr& c, const signed_block_ptr& msg);
-      void process_message(const connection_ptr& c, const signed_block_ptr& msg);
+      void process_message(const connection_ptr& c, const signed_block_ptr& msg, go_away_reason reason);
       void handle_message(const connection_ptr& c, const packed_transaction& msg) = delete; // packed_transaction_ptr overload used instead
       void handle_message(const connection_ptr& c, const packed_transaction_ptr& msg);
-      void process_message(const connection_ptr& c, const packed_transaction_ptr& msg);
 
       void start_conn_timer(boost::asio::steady_timer::duration du, std::weak_ptr<connection> from_connection);
       void start_txn_timer();
@@ -964,9 +957,7 @@ namespace eosio {
       if( !buffer_queue.add_write_queue( buff, callback, to_sync_queue )) {
          fc_wlog( logger, "write_queue full ${s} bytes, giving up on connection ${p}",
                   ("s", buffer_queue.write_queue_size())("p", peer_name()) );
-         app().post(priority::high, [this]() {
-            my_impl->close( shared_from_this() );
-         });
+         my_impl->close( shared_from_this() );
          return;
       }
       if( buffer_queue.is_out_queue_empty() && trigger_send) {
@@ -980,9 +971,7 @@ namespace eosio {
       connection_wptr c(shared_from_this());
       if(!socket->is_open()) {
          fc_elog(logger,"socket not open to ${p}",("p",peer_name()));
-         app().post(priority::high, [this, c]() {
-            my_impl->close(c.lock());
-         });
+         my_impl->close(c.lock());
          return;
       }
       std::vector<boost::asio::const_buffer> bufs;
@@ -1009,11 +998,8 @@ namespace eosio {
                   return;
                }
                conn->buffer_queue.clear_out_queue();
-               boost::asio::thread_pool& prod_thread_pool = app().find_plugin<producer_plugin>()->get_prod_thread_pool();
-               boost::asio::post( prod_thread_pool, [conn, priority]() {
-                  conn->enqueue_sync_block();
-                  conn->do_queue_write( priority );
-               });
+               conn->enqueue_sync_block();
+               conn->do_queue_write( priority );
             }
             catch(const std::exception &ex) {
                auto conn = c.lock();
@@ -2239,13 +2225,6 @@ namespace eosio {
    }
 
    void net_plugin_impl::handle_message(const connection_ptr& c, const handshake_message& msg) {
-      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, c, msg]() {
-         process_message(c, msg);
-      });
-   }
-
-   void net_plugin_impl::process_message(const connection_ptr& c, const handshake_message& msg) {
       peer_ilog(c, "received handshake_message");
       if (!is_valid(msg)) {
          peer_elog( c, "bad handshake message");
@@ -2353,13 +2332,6 @@ namespace eosio {
    }
 
    void net_plugin_impl::handle_message(const connection_ptr& c, const go_away_message& msg) {
-      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, c, msg]() {
-         process_message(c, msg);
-      });
-   }
-
-   void net_plugin_impl::process_message(const connection_ptr& c, const go_away_message& msg) {
       string rsn = reason_str( msg.reason );
       peer_wlog(c, "received go_away_message");
       fc_wlog( logger, "received a go away message from ${p}, reason = ${r}",
@@ -2369,19 +2341,10 @@ namespace eosio {
          c->node_id = msg.node_id;
       }
       c->flush_queues();
-      app().post(priority::high, [this, c]() {
-         close(c);
-      });
+      close(c);
    }
 
    void net_plugin_impl::handle_message(const connection_ptr& c, const time_message& msg) {
-      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, c, msg]() {
-         process_message(c, msg);
-      });
-   }
-
-   void net_plugin_impl::process_message(const connection_ptr& c, const time_message& msg) {
       peer_ilog(c, "received time_message");
       /* We've already lost however many microseconds it took to dispatch
        * the message, but it can't be helped.
@@ -2415,13 +2378,6 @@ namespace eosio {
    }
 
    void net_plugin_impl::handle_message(const connection_ptr& c, const notice_message& msg) {
-      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, c, msg]() {
-         process_message(c, msg);
-      });
-   }
-
-   void net_plugin_impl::process_message(const connection_ptr& c, const notice_message& msg) {
       // peer tells us about one or more blocks or txns. When done syncing, forward on
       // notices of previously unknown blocks or txns,
       //
@@ -2486,13 +2442,6 @@ namespace eosio {
    }
 
    void net_plugin_impl::handle_message(const connection_ptr& c, const request_message& msg) {
-      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, c, msg]() {
-         process_message(c, msg);
-      });
-   }
-
-   void net_plugin_impl::process_message(const connection_ptr& c, const request_message& msg) {
       if( msg.req_blocks.ids.size() > 1 ) {
          fc_elog( logger, "Invalid request_message, req_blocks.ids.size ${s}", ("s", msg.req_blocks.ids.size()) );
          close(c);
@@ -2531,13 +2480,6 @@ namespace eosio {
    }
 
    void net_plugin_impl::handle_message(const connection_ptr& c, const sync_request_message& msg) {
-      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, c, msg]() {
-         process_message(c, msg);
-      });
-   }
-
-   void net_plugin_impl::process_message(const connection_ptr& c, const sync_request_message& msg) {
       if( msg.end_block == 0) {
          c->peer_requested.reset();
          c->flush_queues();
@@ -2555,13 +2497,6 @@ namespace eosio {
    }
 
    void net_plugin_impl::handle_message(const connection_ptr& c, const packed_transaction_ptr& trx) {
-      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, c, trx]() {
-         process_message(c, trx);
-      });
-   }
-
-   void net_plugin_impl::process_message(const connection_ptr& c, const packed_transaction_ptr& trx) {
       fc_dlog(logger, "got a packed transaction, cancel wait");
       peer_ilog(c, "received packed_transaction");
       controller& cc = my_impl->chain_plug->chain();
@@ -2583,33 +2518,32 @@ namespace eosio {
       }
       dispatcher->recv_transaction(c, tid);
       c->trx_in_progress_size += calc_trx_size( ptrx->packed_trx );
-      chain_plug->accept_transaction(ptrx, [c, this, ptrx](const static_variant<fc::exception_ptr, transaction_trace_ptr>& result) {
-         c->trx_in_progress_size -= calc_trx_size( ptrx->packed_trx );
-         if (result.contains<fc::exception_ptr>()) {
-            peer_dlog(c, "bad packed_transaction : ${m}", ("m",result.get<fc::exception_ptr>()->what()));
-         } else {
-            auto trace = result.get<transaction_trace_ptr>();
-            if (!trace->except) {
-               fc_dlog(logger, "chain accepted transaction");
-               this->dispatcher->bcast_transaction(ptrx);
-               return;
-            }
+      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
+      boost::asio::post( prod_thread_pool, [this, c, ptrx]() {
+         chain_plug->accept_transaction(ptrx, [c, this, ptrx](const static_variant<fc::exception_ptr, transaction_trace_ptr>& result) {
+            auto res = result;
+            app().post( priority::low,  [c, this, ptrx, res]() {
+               c->trx_in_progress_size -= calc_trx_size( ptrx->packed_trx );
+               if (res.contains<fc::exception_ptr>()) {
+                  peer_dlog(c, "bad packed_transaction : ${m}", ("m",res.get<fc::exception_ptr>()->what()));
+               } else {
+                  auto trace = res.get<transaction_trace_ptr>();
+                  if (!trace->except) {
+                     fc_dlog(logger, "chain accepted transaction");
+                     this->dispatcher->bcast_transaction(ptrx);
+                     return;
+                  }
 
-            peer_elog(c, "bad packed_transaction : ${m}", ("m",trace->except->what()));
-         }
+                  peer_elog(c, "bad packed_transaction : ${m}", ("m",trace->except->what()));
+               }
 
-         dispatcher->rejected_transaction(ptrx->id);
+               dispatcher->rejected_transaction(ptrx->id);
+            });
+         });
       });
    }
 
    void net_plugin_impl::handle_message(const connection_ptr& c, const signed_block_ptr& msg) {
-      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, c, msg]() {
-         process_message(c, msg);
-      });
-   }
-
-   void net_plugin_impl::process_message(const connection_ptr& c, const signed_block_ptr& msg) {
       controller &cc = chain_plug->chain();
       block_id_type blk_id = msg->id();
       uint32_t blk_num = msg->block_num();
@@ -2631,28 +2565,41 @@ namespace eosio {
       peer_ilog(c, "received signed_block : #${n} block age in secs = ${age}",
               ("n",blk_num)("age",age.to_seconds()));
 
-      go_away_reason reason = fatal_other;
-      try {
-         chain_plug->accept_block(msg); //, sync_master->is_active(c));
-         reason = no_reason;
-      } catch( const unlinkable_block_exception &ex) {
-         peer_elog(c, "bad signed_block : ${m}", ("m",ex.what()));
-         reason = unlinkable;
-      } catch( const block_validate_exception &ex) {
-         peer_elog(c, "bad signed_block : ${m}", ("m",ex.what()));
-         fc_elog( logger, "block_validate_exception accept block #${n} syncing from ${p}",("n",blk_num)("p",c->peer_name()) );
-         reason = validation;
-      } catch( const assert_exception &ex) {
-         peer_elog(c, "bad signed_block : ${m}", ("m",ex.what()));
-         fc_elog( logger, "unable to accept block on assert exception ${n} from ${p}",("n",ex.to_string())("p",c->peer_name()));
-      } catch( const fc::exception &ex) {
-         peer_elog(c, "bad signed_block : ${m}", ("m",ex.what()));
-         fc_elog( logger, "accept_block threw a non-assert exception ${x} from ${p}",( "x",ex.to_string())("p",c->peer_name()));
-         reason = no_reason;
-      } catch( ...) {
-         peer_elog(c, "bad signed_block : unknown exception");
-         fc_elog( logger, "handle sync block caught something else from ${p}",("num",blk_num)("p",c->peer_name()));
-      }
+
+      boost::asio::thread_pool& prod_thread_pool = producer_plug->get_prod_thread_pool();
+      boost::asio::post( prod_thread_pool, [this, c, msg, blk_num]() {
+         go_away_reason reason = fatal_other;
+         try {
+            chain_plug->accept_block(msg); //, sync_master->is_active(c));
+            reason = no_reason;
+         } catch( const unlinkable_block_exception &ex) {
+            peer_elog(c, "bad signed_block : ${m}", ("m",ex.what()));
+            reason = unlinkable;
+         } catch( const block_validate_exception &ex) {
+            peer_elog(c, "bad signed_block : ${m}", ("m",ex.what()));
+            fc_elog( logger, "block_validate_exception accept block #${n} syncing from ${p}",("n",blk_num)("p",c->peer_name()) );
+            reason = validation;
+         } catch( const assert_exception &ex) {
+            peer_elog(c, "bad signed_block : ${m}", ("m",ex.what()));
+            fc_elog( logger, "unable to accept block on assert exception ${n} from ${p}",("n",ex.to_string())("p",c->peer_name()));
+         } catch( const fc::exception &ex) {
+            peer_elog(c, "bad signed_block : ${m}", ("m",ex.what()));
+            fc_elog( logger, "accept_block threw a non-assert exception ${x} from ${p}",( "x",ex.to_string())("p",c->peer_name()));
+            reason = no_reason;
+         } catch( ...) {
+            peer_elog(c, "bad signed_block : unknown exception");
+            fc_elog( logger, "handle sync block caught something else from ${p}",("num",blk_num)("p",c->peer_name()));
+         }
+         app().post( priority::low, [this, c, msg, reason](){
+            process_message(c, msg, reason);
+         });
+      });
+   }
+
+   void net_plugin_impl::process_message(const connection_ptr& c, const signed_block_ptr& msg, go_away_reason reason) {
+      controller &cc = chain_plug->chain();
+      block_id_type blk_id = msg->id();
+      uint32_t blk_num = msg->block_num();
 
       update_block_num ubn(blk_num);
       if( reason == no_reason ) {
@@ -2807,17 +2754,14 @@ namespace eosio {
    }
 
    void net_plugin_impl::transaction_ack(const std::pair<fc::exception_ptr, transaction_metadata_ptr>& results) {
-      boost::asio::thread_pool& prod_thread_pool = app().find_plugin<producer_plugin>()->get_prod_thread_pool();
-      boost::asio::post( prod_thread_pool, [this, results]() {
-         const auto& id = results.second->id;
-         if (results.first) {
-            fc_ilog(logger,"signaled NACK, trx-id = ${id} : ${why}",("id", id)("why", results.first->to_detail_string()));
-            dispatcher->rejected_transaction(id);
-         } else {
-            fc_ilog(logger,"signaled ACK, trx-id = ${id}",("id", id));
-            dispatcher->bcast_transaction(results.second);
-         }
-      });
+      const auto& id = results.second->id;
+      if (results.first) {
+         fc_ilog(logger,"signaled NACK, trx-id = ${id} : ${why}",("id", id)("why", results.first->to_detail_string()));
+         dispatcher->rejected_transaction(id);
+      } else {
+         fc_ilog(logger,"signaled ACK, trx-id = ${id}",("id", id));
+         dispatcher->bcast_transaction(results.second);
+      }
    }
 
    bool net_plugin_impl::authenticate_peer(const handshake_message& msg) const {
