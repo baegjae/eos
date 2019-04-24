@@ -100,7 +100,7 @@ struct txn_test_gen_plugin_impl {
    optional<boost::asio::thread_pool>                   thread_pool;
    std::shared_ptr<boost::asio::high_resolution_timer>  timer;
 
-   void push_next_transaction(const std::shared_ptr<std::vector<signed_transaction>>& trxs, const std::function<void(const fc::exception_ptr&)>& next ) {
+   void push_next_transaction(const std::shared_ptr<std::vector<signed_transaction>>& trxs, const std::function<void(const fc::exception_ptr&)>& next, uint32_t client_id ) {
       chain_plugin& cp = app().get_plugin<chain_plugin>();
 
       for (size_t i = 0; i < trxs->size(); ++i) {
@@ -112,15 +112,20 @@ struct txn_test_gen_plugin_impl {
                   _total_us += result.get<transaction_trace_ptr>()->receipt->cpu_usage_us;
                   ++_txcount;
                }
+               if(client_id > 0 && i == trxs->size()-1){
+                  boost::asio::post( *gen_ioc, [this, client_id]() {
+                     send_request(client_id);
+                  });
+               }
             }
          });
       }
    }
 
-   void push_transactions( std::vector<signed_transaction>&& trxs, const std::function<void(fc::exception_ptr)>& next ) {
+   void push_transactions( std::vector<signed_transaction>&& trxs, const std::function<void(fc::exception_ptr)>& next, uint32_t client_id) {
       auto trxs_copy = std::make_shared<std::decay_t<decltype(trxs)>>(std::move(trxs));
-      app().post(priority::low, [this, trxs_copy, next]() {
-         push_next_transaction(trxs_copy, next);
+      app().post(priority::low, [this, trxs_copy, next, client_id]() {
+         push_next_transaction(trxs_copy, next, client_id);
       });
    }
 
@@ -245,7 +250,7 @@ struct txn_test_gen_plugin_impl {
          return;
       }
 
-      push_transactions(std::move(trxs), next);
+      push_transactions(std::move(trxs), next, 0);
    }
 
    void start_generation(const std::string& salt, const uint64_t& period, const uint64_t& batch_size) {
@@ -282,7 +287,6 @@ struct txn_test_gen_plugin_impl {
 
       timer_timeout = period;
       batch = batch_size/2;
-      nonce_prefix = 0;
       cc._count_blocks = 0;
       cc._count_txns = 0;
       cc._count_accepted_txns = 0;
@@ -302,30 +306,26 @@ struct txn_test_gen_plugin_impl {
 
       _start_time = fc::time_point::now();
 
-      boost::asio::post( *gen_ioc, [this]() {
-         arm_timer(boost::asio::high_resolution_timer::clock_type::now());
-      });
+      for(int i = 1; i <= period; i++){
+         boost::asio::post( *gen_ioc, [this, i]() {
+            send_request(i);
+         });
+      }
    }
 
-   void arm_timer(boost::asio::high_resolution_timer::time_point s) {
-      timer->expires_at(s + std::chrono::milliseconds(timer_timeout));
-      boost::asio::post( *gen_ioc, [this]() {
-         send_transaction([this](const fc::exception_ptr& e){
-            if (e) {
-               elog("pushing transaction failed: ${e}", ("e", e->to_detail_string()));
-               if(running)
-                  stop_generation();
-            }
-         }, nonce_prefix++);
-      });
-      timer->async_wait([this](const boost::system::error_code& ec) {
-         if(!running || ec)
-            return;
-         arm_timer(timer->expires_at());
-      });
+   void send_request(uint32_t client_id) {
+      if(!running)
+         return;
+      send_transaction([this](const fc::exception_ptr& e){
+         if (e) {
+            elog("pushing transaction failed: ${e}", ("e", e->to_detail_string()));
+            if(running)
+               stop_generation();
+         }
+      }, client_id);
    }
 
-   void send_transaction(std::function<void(const fc::exception_ptr&)> next, uint64_t nonce_prefix) {
+   void send_transaction(std::function<void(const fc::exception_ptr&)> next, uint32_t client_id) {
       std::vector<signed_transaction> trxs;
       trxs.reserve(2*batch);
 
@@ -354,7 +354,7 @@ struct txn_test_gen_plugin_impl {
          {
          signed_transaction trx;
          trx.actions.push_back(act_a_to_b);
-         trx.context_free_actions.emplace_back(action({}, config::null_account_name, "nonce", fc::raw::pack( std::to_string(nonce_prefix)+std::to_string(nonce++) )));
+         trx.context_free_actions.emplace_back(action({}, config::null_account_name, "nonce", fc::raw::pack( std::to_string(client_id)+std::to_string(nonce++) )));
          trx.set_reference_block(reference_block_id);
          trx.expiration = cc.head_block_time() + fc::seconds(30);
          trx.max_net_usage_words = 100;
@@ -365,7 +365,7 @@ struct txn_test_gen_plugin_impl {
          {
          signed_transaction trx;
          trx.actions.push_back(act_b_to_a);
-         trx.context_free_actions.emplace_back(action({}, config::null_account_name, "nonce", fc::raw::pack( std::to_string(nonce_prefix)+std::to_string(nonce++) )));
+         trx.context_free_actions.emplace_back(action({}, config::null_account_name, "nonce", fc::raw::pack( std::to_string(client_id)+std::to_string(nonce++) )));
          trx.set_reference_block(reference_block_id);
          trx.expiration = cc.head_block_time() + fc::seconds(30);
          trx.max_net_usage_words = 100;
@@ -377,7 +377,7 @@ struct txn_test_gen_plugin_impl {
          next(e.dynamic_copy_exception());
       }
 
-      push_transactions(std::move(trxs), next);
+      push_transactions(std::move(trxs), next, client_id);
    }
 
    void stop_generation() {
@@ -416,7 +416,6 @@ struct txn_test_gen_plugin_impl {
 
    unsigned timer_timeout;
    unsigned batch;
-   uint64_t nonce_prefix;
 
    action act_a_to_b;
    action act_b_to_a;
