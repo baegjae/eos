@@ -36,6 +36,7 @@ namespace eosio { namespace chain {
             bool                     genesis_written_to_block_log = false;
             uint32_t                 version = 0;
             uint32_t                 first_block_num = 0;
+            boost::mutex             mtx;
 
             inline void check_block_read() {
                if (block_write) {
@@ -188,6 +189,7 @@ namespace eosio { namespace chain {
    }
 
    uint64_t block_log::append(const signed_block_ptr& b) {
+      boost::mutex::scoped_lock lock( my->mtx );
       try {
          EOS_ASSERT( my->genesis_written_to_block_log, block_log_append_fail, "Cannot append to block log until the genesis is first written" );
 
@@ -277,6 +279,7 @@ namespace eosio { namespace chain {
    }
 
    signed_block_ptr block_log::read_block_by_num(uint32_t block_num)const {
+      boost::mutex::scoped_lock lock( my->mtx );
       try {
          signed_block_ptr b;
          uint64_t pos = get_block_pos(block_num);
@@ -300,6 +303,7 @@ namespace eosio { namespace chain {
    }
 
    signed_block_ptr block_log::read_head()const {
+      boost::mutex::scoped_lock lock( my->mtx );
       my->check_block_read();
 
       uint64_t pos;
