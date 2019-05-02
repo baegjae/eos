@@ -404,7 +404,7 @@ struct txn_test_gen_plugin_impl {
       if (_txcount) {
          ilog("${d} transactions generated for ${s} ms (${tps} TPS)",
             ("d", _txcount) ("s", elapsed_ms) ("tps",(int)(((double)_txcount/elapsed_ms)*1000)));
-         ilog("${t} transactions contains in ${b} blocks (${tps} TPS)",
+         ilog("${t} transactions contains in ${b} blocks (|${tps}| TPS)",
             ("t",cc._count_txns_in_blocks) ("b",cc._count_blocks) ("tps",cc._count_txns_in_blocks*2 / cc._count_blocks) );
          ilog("Net_plugin received ${ret}, dropped ${dt}, accepted ${at}",
             ("ret",cc._count_received_txns_net) ("dt",cc._count_dropped_txns_net) ("at",cc._count_received_txns_net-cc._count_dropped_txns_net) );
