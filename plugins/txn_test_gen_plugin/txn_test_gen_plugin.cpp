@@ -108,9 +108,9 @@ struct txn_test_gen_plugin_impl {
             if (result.contains<fc::exception_ptr>()) {
                next(result.get<fc::exception_ptr>());
             } else {
+               ++_txcount;
                if (result.contains<transaction_trace_ptr>() && result.get<transaction_trace_ptr>()->receipt) {
                   _total_us += result.get<transaction_trace_ptr>()->receipt->cpu_usage_us;
-                  ++_txcount;
                }
             }
          });
@@ -284,7 +284,9 @@ struct txn_test_gen_plugin_impl {
       batch = batch_size/2;
       nonce_prefix = 0;
       cc._count_blocks = 0;
-      cc._count_txns = 0;
+      cc._count_txns_in_blocks = 0;
+      cc._count_received_txns_net = 0;
+      cc._count_dropped_txns_net = 0;
       cc._count_accepted_txns = 0;
       cc._count_rejected_txns = 0;
       cc.t_process_transaction = fc::microseconds(0);
@@ -400,10 +402,14 @@ struct txn_test_gen_plugin_impl {
       ilog("Stopping transaction generation test");
 
       if (_txcount) {
-         ilog("${d} transactions executed for ${s} ms (${tps} TPS)", 
+         ilog("${d} transactions generated for ${s} ms (${tps} TPS)",
             ("d", _txcount) ("s", elapsed_ms) ("tps",(int)(((double)_txcount/elapsed_ms)*1000)));
-         ilog("${t} transactions (${at},${rt}) produced in ${b} blocks (${tps} TPS)",
-            ("t",cc._count_txns) ("at",cc._count_accepted_txns) ("rt",cc._count_rejected_txns) ("b",cc._count_blocks) ("tps",cc._count_txns*2 / cc._count_blocks) );
+         ilog("${t} transactions contains in ${b} blocks (|${tps}| TPS)",
+            ("t",cc._count_txns_in_blocks) ("b",cc._count_blocks) ("tps",cc._count_txns_in_blocks*2 / cc._count_blocks) );
+         ilog("Net_plugin received ${ret}, dropped ${dt}, accepted ${at}",
+            ("ret",cc._count_received_txns_net) ("dt",cc._count_dropped_txns_net) ("at",cc._count_received_txns_net-cc._count_dropped_txns_net) );
+         ilog("accepted_txns ${at}, rejected_txns ${rt}",
+            ("at",cc._count_accepted_txns) ("rt",cc._count_rejected_txns) );
          ilog("process_transaction ${p} ms/block, sig_transaction ${s} ms/block, billed CPU usage ${t} us/transaction ",
             ("p", (int)((double)cc.t_process_transaction.count()/1000/blocks) ) ("s", (int)((double)cc.t_sig_transaction.count()/1000/blocks) )
             ("t", _total_us / (double)_txcount) );

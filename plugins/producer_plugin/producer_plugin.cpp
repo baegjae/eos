@@ -351,7 +351,7 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
          }
 
          chain._count_blocks++;
-         chain._count_txns += block->transactions.size();
+         chain._count_txns_in_blocks += block->transactions.size();
       }
 
       std::deque<std::tuple<transaction_metadata_ptr, bool, next_function<transaction_trace_ptr>>> _pending_incoming_transactions;
@@ -1630,7 +1630,7 @@ void producer_plugin_impl::produce_block() {
         ("count",new_bs->block->transactions.size())("lib",chain.last_irreversible_block_num())("confs", new_bs->header.confirmed));
 
    chain._count_blocks++;
-   chain._count_txns += new_bs->block->transactions.size();
+   chain._count_txns_in_blocks += new_bs->block->transactions.size();
 }
 
 } // namespace eosio
