@@ -359,17 +359,28 @@ class producer_plugin_impl : public std::enable_shared_from_this<producer_plugin
       void on_incoming_transaction_async(const transaction_metadata_ptr& trx, bool persist_until_expired, next_function<transaction_trace_ptr> next) {
          chain::controller& chain = chain_plug->chain();
          const auto& cfg = chain.get_global_properties().configuration;
-         transaction_metadata::create_signing_keys_future( trx, *_thread_pool, chain.get_chain_id(), fc::microseconds( cfg.max_transaction_cpu_usage ) );
-         boost::asio::post( *_thread_pool, [self = this, trx, persist_until_expired, next]() {
-            if( trx->signing_keys_future.valid() )
-               trx->signing_keys_future.wait();
-            boost::asio::post( *self->_prod_thread_pool, [self, trx, persist_until_expired, next]() {
+         if (_pending_block_mode == pending_block_mode::producing)
+            transaction_metadata::create_signing_keys_future( trx, *_thread_pool, chain.get_chain_id(), fc::microseconds( cfg.max_transaction_cpu_usage ) );
+         if (_pending_block_mode == pending_block_mode::producing){
+            boost::asio::post( *_thread_pool, [self = this, trx, persist_until_expired, next]() {
+               if( trx->signing_keys_future.valid() )
+                  trx->signing_keys_future.wait();
+               boost::asio::post( *self->_prod_thread_pool, [self, trx, persist_until_expired, next]() {
+                  auto start = fc::time_point::now(); // profiling
+                  self->process_incoming_transaction_async( trx, persist_until_expired, next );
+                  chain::controller& chain = self->chain_plug->chain();
+                  chain.t_process_transaction += fc::time_point::now() - start;
+               });
+            });
+         }
+         else{
+            boost::asio::post( *_prod_thread_pool, [self = this, trx, persist_until_expired, next]() {
                auto start = fc::time_point::now(); // profiling
                self->process_incoming_transaction_async( trx, persist_until_expired, next );
                chain::controller& chain = self->chain_plug->chain();
                chain.t_process_transaction += fc::time_point::now() - start;
             });
-         });
+         }
       }
 
       void process_incoming_transaction_async(const transaction_metadata_ptr& trx, bool persist_until_expired, next_function<transaction_trace_ptr> next) {

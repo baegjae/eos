@@ -1016,6 +1016,9 @@ struct controller_impl {
          trx_context.explicit_billed_cpu_time = explicit_billed_cpu_time;
          trx_context.billed_cpu_time_us = billed_cpu_time_us;
          trace = trx_context.trace;
+
+         if(billed_cpu_time_us == 1)
+            return trace;
          try {
             if( trx->implicit ) {
                trx_context.init_for_implicit_trx();
@@ -1039,8 +1042,6 @@ struct controller_impl {
                        false
                );
             }
-            if(billed_cpu_time_us == 1)
-               return trace;
             self.t_sig_transaction += trx->sig_cpu_usage;
             trx_context.exec();
             trx_context.finalize(); // Automatically rounds up network and CPU usage in trace and bills payers if successful
